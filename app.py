@@ -85,6 +85,8 @@ from core.f1_api    import (fetch_event_data, get_available_rounds,
 from core.odds_parser import parse_text, parse_image_with_claude, OddsEntry
 from core.analysis  import AnalysisEngine
 from ml.models      import F1MLEngine
+from core.db         import get_db, is_mongo_available
+from core.session_tracker import collect_session_info, session_info_to_dict
 from core.results    import (fetch_race_result, evaluate_predictions,
                               save_records, load_records, get_evaluated_records,
                               delete_records, get_real_records, history_summary,
@@ -112,6 +114,8 @@ def _init():
         ("pred_records", []),
         ("race_result", None),
         ("optimizer", None),
+        ("_session_info", None),
+        ("_db", "uninitialized"),
         ("api_log", []),
     ]:
         if k not in st.session_state:
@@ -126,6 +130,19 @@ def get_ml_engine():
     eng.train()
     return eng
 
+
+# ── Connessione MongoDB (singleton per sessione) ─────────────────────
+if st.session_state.get("_db") == "uninitialized":
+    st.session_state["_db"] = get_db()   # None se non configurato → JSON fallback
+_db = st.session_state.get("_db")
+
+# ── Telemetria sessione (raccolta una sola volta per sessione) ──────
+if st.session_state.get("_session_info") is None:
+    try:
+        _sinfo = collect_session_info(action="app_open")
+        st.session_state["_session_info"] = session_info_to_dict(_sinfo)
+    except Exception:
+        st.session_state["_session_info"] = {"timestamp": "", "session_hash": ""}
 
 # ══════════════════════════════════════════════════════════════════════
 # SIDEBAR
@@ -557,8 +574,13 @@ with tab_eval:
 
     col_load, col_status = st.columns([2,1])
     with col_load:
-        eval_year  = st.number_input("Anno", 2024, 2026, sel_round["year"] if sel_round and "year" in sel_round else 2026, key="eval_year")
-        eval_round = st.number_input("Round", 1, 24, int(sel_round["round"]) if sel_round else 1, key="eval_round")
+        _default_year  = int(sel_round["year"])  if sel_round and "year"  in sel_round else 2026
+        _default_round = int(sel_round["round"]) if sel_round and "round" in sel_round else 1
+        eval_year  = st.number_input("Anno",  2024, 2026, _default_year,  key="eval_year")
+        eval_round = st.number_input("Round", 1,    24,   _default_round, key="eval_round")
+    # Garanzia: sempre int validi anche se il widget non ha ancora restituito un valore
+    eval_year  = int(eval_year  or _default_year)
+    eval_round = int(eval_round or _default_round)
     with col_status:
         st.markdown("<br>", unsafe_allow_html=True)
         load_result_btn = st.button("📡 Carica risultato gara", width='stretch')
@@ -636,21 +658,42 @@ with tab_eval:
                     edge=p.edge,
                 ))
             evaluated = evaluate_predictions(raw_records, rr)
-            # Marca esplicitamente come dati reali
+            # Marca esplicitamente come dati reali + arricchisci con telemetria
+            _si = st.session_state.get("_session_info", {})
+            try:
+                _sinfo_now = collect_session_info(
+                    action="evaluate",
+                    gp_year=int(eval_year),
+                    gp_round=int(eval_round),
+                    do_geoip=False,  # veloce — no lookup esterno
+                )
+            except Exception:
+                _sinfo_now = None
             for r in evaluated:
                 r.source = "real"
-            n_saved = save_records(evaluated, year=int(eval_year))
+                if _sinfo_now:
+                    r.timestamp      = _sinfo_now.timestamp
+                    r.session_hash   = _sinfo_now.session_hash
+                    r.ip_hash        = _sinfo_now.ip_hash
+                    r.ip_country     = _sinfo_now.ip_country
+                    r.browser_family = _sinfo_now.browser_family
+                    r.os_family      = _sinfo_now.os_family
+                    r.is_mobile      = _sinfo_now.is_mobile
+                    r.language       = _sinfo_now.language
+                    r.action         = "evaluate"
+            n_saved = save_records(evaluated, db=_db, year=int(eval_year))
             st.session_state["pred_records"] = load_records()
             n_eval = len([r for r in evaluated if r.outcome is not None])
             st.success(f"✅ {n_eval}/{len(evaluated)} predizioni valutate · {n_saved} nuovi record salvati")
 
     # ── Carica storico ───────────────────────────────────────────
-    all_records = st.session_state.get("pred_records") or load_records(year=int(eval_year))
+    all_records = st.session_state.get("pred_records") or (load_records(db=_db, year=eval_year) if eval_year else [])
     if not all_records:
         all_records = []
     st.session_state["pred_records"] = all_records
 
     # Solo record reali dell'anno selezionato per il modello
+    # get_real_records already filters — re-derive from all_records for display
     real_records      = [r for r in all_records if getattr(r, 'source', 'real') == 'real']
     evaluated_records = [r for r in real_records if r.outcome is not None]
 
@@ -694,8 +737,8 @@ with tab_eval:
             # Tag esplicitamente come demo → NON inquinano le metriche reali
             for r in demo_recs:
                 r.source = "demo"
-            save_records(demo_recs, year=int(eval_year))
-            st.session_state["pred_records"] = load_records(year=int(eval_year))
+            save_records(demo_recs, db=_db, year=int(eval_year))
+            st.session_state["pred_records"] = load_records(db=_db, year=int(eval_year))
             st.rerun()
 
     else:
