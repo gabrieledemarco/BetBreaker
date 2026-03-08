@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BetBreaker F1 — ML Odds Analyzer · Documentation</title>
+<meta name="description" content="Open-source F1 machine learning odds analyzer. Ensemble ML with real-time data from OpenF1 and Jolpica APIs."/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="assets/style.css"/>
+</head>
+<body>
+<div class="page-wrap">
+
+<nav>
+  <a class="nav-logo" href="#">&#127919; Bet<span>Breaker</span></a>
+  <ul class="nav-links">
+    <li><a href="#what">Features</a></li>
+    <li><a href="#howto">Usage</a></li>
+    <li><a href="#install">Install</a></li>
+    <li><a href="#arch">Architecture</a></li>
+    <li><a href="#refs">Research</a></li>
+    <li><a href="https://github.com/gabridemarco091/f1_webapp" target="_blank">GitHub</a></li>
+  </ul>
+  <a class="nav-cta" href="https://betbreakerml.streamlit.app" target="_blank">&#9889; Launch App</a>
+</nav>
+
+<section id="hero">
+  <div class="hero-glow"></div>
+  <div class="container">
+    <div class="hero-inner">
+      <div>
+        <div class="hero-badge"><span class="badge-dot"></span>open-source &middot; F1 &middot; machine learning</div>
+        <h1 class="hero-title">BetBreaker<br/><span class="accent">F1 ML</span> Odds Analyzer<span class="sub">Statistical edge detection for Formula 1 markets</span></h1>
+        <p class="hero-desc">An ensemble machine learning system that computes probability edges against bookmaker odds for Formula 1 head-to-head markets &mdash; using real telemetry data from OpenF1 and Jolpica APIs, with cloud-persistent storage.</p>
+        <div class="hero-actions">
+          <a class="btn-primary" href="https://betbreakerml.streamlit.app" target="_blank">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8zm3.5 11.5l-5-3V4h1.5v3.75l4 2.5-1 1.25z"/></svg>
+            Launch App
+          </a>
+          <a class="btn-secondary" href="https://github.com/gabridemarco091/f1_webapp" target="_blank">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            View on GitHub
+          </a>
+        </div>
+      </div>
+      <div>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="t-dot r"></span><span class="t-dot y"></span><span class="t-dot g"></span>
+            <span class="terminal-title">betbreaker &mdash; python</span>
+          </div>
+          <div class="terminal-body">
+            <div class="t-comment"># BetBreaker ML Engine &mdash; GP Australia 2026</div>
+            <div class="t-cmd">streamlit run app.py</div>
+            <div class="t-out2">Loading ensemble model (LR + RF + GBM)...</div>
+            <div class="t-out2">Fetching OpenF1 telemetry: FP1, FP2, FP3 &#10003;</div>
+            <div class="t-out2">Fetching Jolpica qualifying: Round 1 &#10003;</div>
+            <br/>
+            <div class="t-comment"># Top edges detected</div>
+            <div class="t-out">&#10003;  Hadjar vs Verstappen   +53.9%  [Q=3.00]</div>
+            <div class="t-out">&#10003;  Antonelli vs Russell   +24.7%  [Q=6.00]</div>
+            <div class="t-out">&#10003;  Norris vs Piastri      +15.9%  [Q=2.65]</div>
+            <div class="t-out">&#10003;  Hamilton vs Leclerc    +15.0%  [Q=3.00]</div>
+            <br/>
+            <div class="t-out2">Storage: cloud connected &#10003;</div>
+            <div><span class="t-cmd"></span><span class="t-cursor"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="stats-bar">
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-item"><div class="stat-value">3</div><div class="stat-label">ML Models (Ensemble)</div></div>
+      <div class="stat-item"><div class="stat-value">11</div><div class="stat-label">Feature Engineering</div></div>
+      <div class="stat-item"><div class="stat-value">0.784</div><div class="stat-label">Top-6 AUC (RF)</div></div>
+      <div class="stat-item"><div class="stat-value">6k+</div><div class="stat-label">Synthetic Training Races</div></div>
+    </div>
+  </div>
+</div>
+
+<section id="what">
+  <div class="container">
+    <div class="section-eyebrow reveal">what it does</div>
+    <h2 class="section-title reveal">A statistical edge engine<br/>for F1 betting markets</h2>
+    <p class="section-desc reveal">BetBreaker ingests real-time F1 session data, trains an ensemble ML model per season, and computes the probability gap between what the model believes and what the bookmaker prices &mdash; surfacing positive expected value opportunities.</p>
+    <div class="features-grid">
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#128225;</span>
+        <div class="feature-title">Real-time Session Data</div>
+        <div class="feature-desc">Automatically pulls FP1/FP2/FP3 lap times, sector gaps, and qualifying deltas from <strong>OpenF1</strong> and <strong>Jolpica/Ergast</strong> APIs &mdash; no API key required.</div>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#129302;</span>
+        <div class="feature-title">Ensemble ML Engine</div>
+        <div class="feature-desc">Weighted ensemble of Logistic Regression, Random Forest and Gradient Boosting. Weights tuned via 5-fold cross-validation on ~6,000 synthetic F1 races calibrated on 2018&ndash;2025 data.</div>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#128202;</span>
+        <div class="feature-title">Edge Detection</div>
+        <div class="feature-desc">Converts bookmaker odds to implied probability, subtracts ensemble probability, and ranks all markets by statistical edge. Green &gt;15%, Yellow 8&ndash;15%, Red below threshold.</div>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#127919;</span>
+        <div class="feature-title">Multi-builder</div>
+        <div class="feature-desc">Automatically constructs high-edge accumulators (multiples) from the top-ranked selections, with combined probability and expected value calculations per combination.</div>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#128200;</span>
+        <div class="feature-title">Ex-Post Evaluation</div>
+        <div class="feature-desc">After race day, fetches official results via Jolpica API and evaluates each prediction &mdash; computing Accuracy, Brier Score, AUC-ROC, ROI by edge threshold, and calibration bias.</div>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&#9729;&#65039;</span>
+        <div class="feature-title">Cloud Persistent Storage</div>
+        <div class="feature-desc">Predictions survive server restarts. Each season is stored in isolation to prevent cross-year model contamination &mdash; longitudinal accuracy tracking built-in.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="howto" style="background:var(--bg2)">
+  <div class="container">
+    <div class="section-eyebrow reveal">how to use</div>
+    <h2 class="section-title reveal">Five steps from odds<br/>to edge analysis</h2>
+    <p class="section-desc reveal">The workflow is designed to be completed in under five minutes per Grand Prix weekend.</p>
+    <div class="steps-container">
+      <div class="step reveal">
+        <div class="step-num">01</div>
+        <div class="step-content">
+          <div class="step-title">Select the Grand Prix</div>
+          <div class="step-desc">In the <strong>&#128225; Session Data</strong> tab, choose the year and round number. BetBreaker fetches live data from all three free practices and qualifying &mdash; no manual input required.</div>
+        </div>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">02</div>
+        <div class="step-content">
+          <div class="step-title">Enter bookmaker odds</div>
+          <div class="step-desc">In <strong>&#128202; Inserisci Quote</strong>, paste odds as free text (e.g. <em>&ldquo;Russell vs Norris 1.08&rdquo;</em>) or upload a screenshot &mdash; Claude Vision will extract the markets automatically. A built-in demo is available for first-time users.</div>
+        </div>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">03</div>
+        <div class="step-content">
+          <div class="step-title">Run the ML analysis</div>
+          <div class="step-desc">Click <strong>Analizza con ML</strong> in the <strong>&#129302; Analisi ML</strong> tab. The engine builds 11 features per driver pair, runs the ensemble, and renders the edge chart with AUC and feature importance.</div>
+          <div class="code-block"><span style="color:var(--text3);font-style:italic"># Features used by the ensemble</span>
+features = [
+  <span style="color:var(--green)">"grid_pos"</span>, <span style="color:var(--green)">"quali_gap"</span>, <span style="color:var(--green)">"avg_fp_gap"</span>, <span style="color:var(--green)">"best_fp_gap"</span>,
+  <span style="color:var(--green)">"fp_consistency"</span>, <span style="color:var(--green)">"trend_improvement"</span>, <span style="color:var(--green)">"constructor_strength"</span>,
+  <span style="color:var(--green)">"driver_experience"</span>, <span style="color:var(--green)">"session_issues"</span>, <span style="color:var(--green)">"fp2_gap"</span>, <span style="color:var(--green)">"sprint_gap"</span>
+]</div>
+        </div>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">04</div>
+        <div class="step-content">
+          <div class="step-title">Review report and multiples</div>
+          <div class="step-desc">The <strong>&#128203; Report &amp; Multiple</strong> tab shows a full ranked table sortable by edge, plus five auto-constructed accumulators. Download the full CSV for your records.</div>
+        </div>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">05</div>
+        <div class="step-content">
+          <div class="step-title">Evaluate predictions post-race</div>
+          <div class="step-desc">After the race, use <strong>&#128200; Valutazione Ex-Post</strong> to pull official results, match predictions, and compute ROI and calibration metrics &mdash; building a longitudinal accuracy record over the season.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="container">
+    <div class="section-eyebrow reveal">local installation</div>
+    <h2 class="section-title reveal">Run it locally</h2>
+    <p class="section-desc reveal">Three commands and you&rsquo;re running. Python 3.10+ required.</p>
+    <div class="install-grid reveal">
+      <div>
+        <div class="code-file">&#128196; Terminal</div>
+        <div class="code-block"><span style="color:var(--text3);font-style:italic"># Clone the repository</span>
+git clone https://github.com/gabridemarco091/f1_webapp.git
+cd f1_webapp
+
+<span style="color:var(--text3);font-style:italic"># Install dependencies</span>
+pip install -r requirements.txt
+
+<span style="color:var(--text3);font-style:italic"># Launch</span>
+streamlit run app.py</div>
+      </div>
+      <div>
+        <div class="code-file">&#128196; requirements.txt</div>
+        <div class="code-block">streamlit&gt;=1.32.0
+pandas&gt;=2.0.0
+numpy&gt;=1.24.0
+scikit-learn&gt;=1.3.0
+plotly&gt;=5.18.0
+requests&gt;=2.31.0
+pymongo[srv]&gt;=4.6.0
+anthropic&gt;=0.20.0</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="arch" style="background:var(--bg2)">
+  <div class="container">
+    <div class="section-eyebrow reveal">architecture</div>
+    <h2 class="section-title reveal">31-module layered package</h2>
+    <p class="section-desc reveal">Strict separation of concerns &mdash; domain entities carry zero external dependencies. Each layer communicates only downward.</p>
+    <div class="arch-diagram reveal">
+<span class="arch-layer">f1_webapp/</span>
+&#9500;&#9472;&#9472; <span class="arch-file">app.py</span>                    <span class="arch-desc">&#8592; Entry point &mdash; 6 Streamlit tabs</span>
+&#9500;&#9472;&#9472; <span class="arch-file">requirements.txt</span>
+&#9500;&#9472;&#9472; <span class="arch-layer">core/</span>
+&#9474;   &#9500;&#9472;&#9472; <span class="arch-file">db.py</span>                 <span class="arch-desc">&#8592; Cloud storage connection layer</span>
+&#9474;   &#9500;&#9472;&#9472; <span class="arch-file">f1_api.py</span>             <span class="arch-desc">&#8592; OpenF1 + Jolpica/Ergast API clients</span>
+&#9474;   &#9500;&#9472;&#9472; <span class="arch-file">odds_parser.py</span>        <span class="arch-desc">&#8592; Free-text + Claude Vision odds extraction</span>
+&#9474;   &#9500;&#9472;&#9472; <span class="arch-file">analysis.py</span>           <span class="arch-desc">&#8592; ML feature engineering + edge computation</span>
+&#9474;   &#9492;&#9472;&#9472; <span class="arch-file">results.py</span>            <span class="arch-desc">&#8592; Dual-mode persistence + race result fetch</span>
+&#9500;&#9472;&#9472; <span class="arch-layer">ml/</span>
+&#9474;   &#9500;&#9472;&#9472; <span class="arch-file">models.py</span>             <span class="arch-desc">&#8592; F1MLEngine: LR&times;0.25 + RF&times;0.38 + GBM&times;0.37</span>
+&#9474;   &#9492;&#9472;&#9472; <span class="arch-file">evaluator.py</span>          <span class="arch-desc">&#8592; Metrics, ModelOptimizer, calibration</span>
+&#9492;&#9472;&#9472; <span class="arch-layer">components/</span>
+    &#9500;&#9472;&#9472; <span class="arch-file">charts.py</span>             <span class="arch-desc">&#8592; Plotly dark-theme visualizations</span>
+    &#9492;&#9472;&#9472; <span class="arch-file">eval_charts.py</span>        <span class="arch-desc">&#8592; Calibration + ROI threshold charts</span></div>
+  </div>
+</section>
+
+<section id="refs">
+  <div class="container">
+    <div class="section-eyebrow reveal">statistical foundations</div>
+    <h2 class="section-title reveal">Academic references</h2>
+    <p class="section-desc reveal">The models and evaluation methodology in BetBreaker are grounded in peer-reviewed literature. Below are the key references for each system component.</p>
+    <div class="refs-grid">
+      <div class="ref-card reveal">
+        <div class="ref-tag lr">LR</div>
+        <div>
+          <div class="ref-title">Logistic Regression for Binary Classification</div>
+          <div class="ref-authors">Cox, D.R. (1958) &middot; Hosmer &amp; Lemeshow (2000)</div>
+          <div class="ref-desc">The base learner in the ensemble. Models the log-odds of driver D1 finishing ahead of D2 as a linear combination of 11 engineered features. Regularization C=0.5 (L2 penalty) controls overfitting on the sparse F1 feature space.</div>
+          <div class="ref-formula">P(D1 &gt; D2) = <span class="hl">&sigma;</span>(&beta;&#8320; + &beta;&#8321;&middot;grid_gap + &beta;&#8322;&middot;quali_gap + &hellip; + &beta;&#8321;&#8321;&middot;constructor_strength)</div>
+        </div>
+      </div>
+      <div class="ref-card reveal">
+        <div class="ref-tag rf">RF</div>
+        <div>
+          <div class="ref-title">Random Forests &mdash; Ensemble of Decision Trees</div>
+          <div class="ref-authors">Breiman, L. (2001) &middot; Machine Learning 45(1), 5&ndash;32</div>
+          <div class="ref-desc">400-tree forest with bootstrap aggregation and random feature subsampling at each split. Highest ensemble weight (0.38) due to superior Top-6 AUC of 0.784. Provides built-in feature importance via mean decrease in impurity.</div>
+          <div class="ref-formula">f&#770;(x) = <span class="hl">(1/B)</span> &Sigma;&#7495; T&#7495;(x) &nbsp; B=400, each T&#7495; on a bootstrap sample</div>
+        </div>
+      </div>
+      <div class="ref-card reveal">
+        <div class="ref-tag gb">GBM</div>
+        <div>
+          <div class="ref-title">Gradient Boosted Trees &mdash; Stagewise Additive Modeling</div>
+          <div class="ref-authors">Friedman, J.H. (2001) &middot; Annals of Statistics 29(5), 1189&ndash;1232</div>
+          <div class="ref-desc">300 boosting stages with learning rate &eta;=0.04 and max depth 3. Sequentially fits shallow trees to the negative gradient of binary cross-entropy. Ensemble weight 0.37. Particularly sensitive to the <em>trend_improvement</em> feature.</div>
+          <div class="ref-formula">F_m(x) = F_{m-1}(x) + <span class="hl">&eta;</span> &middot; h_m(x) &nbsp; h_m = argmin &Sigma; L(y_i, F_{m-1}(x_i)+h(x_i))</div>
+        </div>
+      </div>
+      <div class="ref-card reveal">
+        <div class="ref-tag ens">ENS</div>
+        <div>
+          <div class="ref-title">Weighted Probability Ensembling</div>
+          <div class="ref-authors">Dietterich, T.G. (2000) &middot; Multiple Classifier Systems, LNCS 1857</div>
+          <div class="ref-desc">Final probability is a weighted linear combination of three base learners. Weights (LR=0.25, RF=0.38, GBM=0.37) selected by grid search on 5-fold cross-validation to maximize AUC on held-out race data.</div>
+          <div class="ref-formula">P_ensemble = <span class="hl">0.25</span>&middot;P_LR + <span class="hl">0.38</span>&middot;P_RF + <span class="hl">0.37</span>&middot;P_GBM</div>
+        </div>
+      </div>
+      <div class="ref-card reveal">
+        <div class="ref-tag cal">CAL</div>
+        <div>
+          <div class="ref-title">Probability Calibration &mdash; Isotonic Regression</div>
+          <div class="ref-authors">Zadrozny &amp; Elkan (2002) &middot; KDD &rsquo;02 &middot; Niculescu-Mizil &amp; Caruana (2005) &middot; ICML</div>
+          <div class="ref-desc">Post-hoc calibration applied once &ge;20 evaluated real predictions are available. Isotonic regression maps raw ensemble scores to empirically calibrated probabilities, reducing overconfidence bias measured via reliability diagrams.</div>
+          <div class="ref-formula">P_cal = <span class="hl">iso</span>(P_ensemble) &nbsp; s.t. iso non-decreasing, minimizes &Sigma;(P_cal_i &minus; y_i)&sup2;</div>
+        </div>
+      </div>
+      <div class="ref-card reveal">
+        <div class="ref-tag ev">EV</div>
+        <div>
+          <div class="ref-title">Kelly Criterion &amp; Expected Value in Prediction Markets</div>
+          <div class="ref-authors">Kelly, J.L. (1956) &middot; Bell System Technical Journal 35(4) &middot; Brier, G.W. (1950)</div>
+          <div class="ref-desc">Edge = P_model &minus; P_implied where P_implied = 1/odds. Brier Score measures mean squared error between predicted probabilities and binary outcomes (target &lt;0.20). ROI simulation uses flat-stake betting across all green-edge predictions.</div>
+          <div class="ref-formula">Edge = <span class="hl">P_ensemble</span> &minus; (1/odds) &nbsp;&middot;&nbsp; BS = (1/n) &Sigma;_i (P_i &minus; y_i)&sup2;</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div class="footer-logo">Bet<span>Breaker</span> F1</div>
+    <div class="footer-desc">Open-source &middot; MIT License &middot; Built with Streamlit, scikit-learn, Python</div>
+    <div class="footer-links">
+      <a href="https://betbreakerml.streamlit.app" target="_blank">&#9889; Launch App</a>
+      <a href="https://github.com/gabridemarco091/f1_webapp" target="_blank">GitHub</a>
+      <a href="#refs">Research</a>
+      <a href="#what">Features</a>
+    </div>
+    <div class="footer-copy">&#9888;&#65039; BetBreaker is a statistical research tool. It does not constitute financial or betting advice.<br/>Past edge performance does not guarantee future results.</div>
+  </div>
+</footer>
+
+</div>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add("visible"); observer.unobserve(e.target); }
+  });
+}, { threshold: 0.08, rootMargin: "0px 0px -40px 0px" });
+
+document.querySelectorAll(".reveal").forEach((el, i) => {
+  el.style.transitionDelay = (i % 4) * 80 + "ms";
+  observer.observe(el);
+});
+
+const sections = document.querySelectorAll("section[id]");
+const navLinks = document.querySelectorAll(".nav-links a");
+window.addEventListener("scroll", () => {
+  let current = "";
+  sections.forEach(s => { if (window.scrollY >= s.offsetTop - 100) current = s.id; });
+  navLinks.forEach(a => {
+    a.style.color = a.getAttribute("href") === "#" + current ? "var(--cyan)" : "";
+  });
+});
+</script>
+
+<script
+  data-name="BMC-Widget"
+  data-cfasync="false"
+  src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js"
+  data-id="Gabridemarco95"
+  data-description="Support me on Buy me a coffee!"
+  data-message="If BetBreaker helped you find an edge, buy me a coffee"
+  data-color="#39d0d8"
+  data-position="Right"
+  data-x_margin="18"
+  data-y_margin="18">
+</script>
+
+</body>
+</html>
