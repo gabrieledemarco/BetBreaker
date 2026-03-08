@@ -261,20 +261,6 @@ SC_HISTORY = {
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
----
-
-## 🗺️ Roadmap
-
-- [ ] Deploy Streamlit Cloud con `secrets.toml`
-- [ ] Cache Redis per risposte API (ridurre chiamate ripetute)
-- [ ] Supporto multi-bookmaker (Snai, Sisal, bet365, Betfair)
-- [ ] Training su dati reali storici 2018–2025 via Jolpica
-- [ ] Mercato Giro Veloce
-- [ ] Notifiche Telegram quando edge supera soglia configurabile
-- [ ] Esportazione report PDF
-- [ ] Docker Compose per deploy self-hosted
-
----
 
 ## 📦 Dipendenze principali
 
