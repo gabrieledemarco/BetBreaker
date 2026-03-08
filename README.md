@@ -338,25 +338,4 @@ Prob. predetta    Freq. osservata    Interpretazione
      80%               90%           🟢 Conservativo — edge sottostimato
 ```
 
-### Ottimizzazione post-hoc
-
-| Tecnica | Quando usarla | Effetto |
-|---------|--------------|---------|
-| **Isotonic Regression** | Bias > ±5%, 20+ obs | Corregge calibrazione, riduce Brier Score |
-| **ROI-by-threshold** | Dopo 15+ gare | Trova la soglia edge ottimale per puntare |
-| **Constructor Strength** | Dopo 10+ H2H | Aggiorna la forza costruttori con dati reali |
-| **Dataset augmentation** | Dopo 50+ gare | Reinserisce dati reali nel training sintetico |
-
-### Formula edge ottimizzata
-
-Una volta trovata la soglia ottimale dal grafico ROI-by-threshold:
-
-```python
-# Invece di puntare su tutto ciò con edge > 4% (default)
-SOGLIA_OTTIMALE = optimizer.roi_by_threshold().idxmax()  # es. 8%
-
-# Punta solo quando edge > soglia_ottimale
-if pred.edge > SOGLIA_OTTIMALE:
-    place_bet(pred)
-```
 
