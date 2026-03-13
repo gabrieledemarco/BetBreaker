@@ -8,9 +8,10 @@ import requests
 import time
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
 import logging
+from core.db import get_db, lap_times_collection, driver_info_collection, session_stats_collection
 
 logger = logging.getLogger("f1_api")
 
@@ -50,7 +51,7 @@ DRIVER_NAME_MAP = {
 }
 
 
-def _get(url: str, params: dict = None) -> Optional[dict]:
+def _get(url: str, params: Optional[dict] = None) -> Optional[Union[dict, list]]:
     for attempt in range(RETRY):
         try:
             r = requests.get(url, params=params, timeout=TIMEOUT)
@@ -241,6 +242,120 @@ def get_fp_gaps(session_key: int) -> Dict[str, float]:
 
 
 # ══════════════════════════════════════════════════════════════
+# LAP TIMES & DRIVER INFO CACHING
+# ══════════════════════════════════════════════════════════════
+
+def fetch_lap_times(session_key: int, year: int, round_num: int, driver_number: Optional[int] = None) -> List[dict]:
+    """
+    Recupera tutti i lap times di una sessione (con caching MongoDB).
+    Se driver_number è specificato, filtra solo i giri di quel pilota.
+    Ritorna lista di dict con campi OpenF1 + year, round_num.
+    """
+    db = get_db()
+    laps = []
+    
+    # 1. Cerca in cache (MongoDB)
+    if db:
+        coll = lap_times_collection(db, year)
+        query = {"session_key": session_key}
+        if driver_number is not None:
+            query["driver_number"] = driver_number
+        cached = list(coll.find(query))
+        if cached:
+            logger.debug(f"Lap times cache hit: session {session_key}, {len(cached)} records")
+            return cached
+    
+    # 2. Cache miss → scarica da OpenF1
+    logger.info(f"Scaricando lap times da OpenF1 per sessione {session_key}")
+    params = {"session_key": session_key}
+    if driver_number is not None:
+        params["driver_number"] = driver_number
+    raw = _get(f"{OPENF1_BASE}/laps", params=params)
+    if not raw:
+        logger.warning(f"Nessun lap time disponibile per sessione {session_key}")
+        return []
+    if isinstance(raw, dict):
+        # Se per qualche motivo l'API ritorna un oggetto singolo, lo convertiamo in lista
+        raw = [raw]
+    assert isinstance(raw, list), "Expected list from OpenF1 API"
+    
+    # 3. Aggiungi metadati (year, round_num) e normalizza
+    for lap in raw:
+        lap["year"] = year
+        lap["round_num"] = round_num
+        # Converti campi nulli in None
+        for f in ("lap_duration", "duration_sector_1", "duration_sector_2", "duration_sector_3"):
+            if lap.get(f) is None:
+                lap[f] = None
+        # Flag is_pit_out_lap è booleano già presente
+    
+    # 4. Salva in cache (se MongoDB disponibile)
+    if db:
+        coll = lap_times_collection(db, year)
+        try:
+            # Upsert per evitare duplicati (unique index su session_key+driver_number+lap_number)
+            for lap in raw:
+                filter_dict = {
+                    "session_key": lap["session_key"],
+                    "driver_number": lap["driver_number"],
+                    "lap_number": lap["lap_number"]
+                }
+                coll.update_one(filter_dict, {"$set": lap}, upsert=True)
+            logger.info(f"Lap times salvati in cache: {len(raw)} record")
+        except Exception as e:
+            logger.warning(f"Errore salvataggio lap times in cache: {e}")
+    
+    return raw
+
+
+def fetch_driver_info(session_key: int, year: int, round_num: int) -> List[dict]:
+    """
+    Recupera informazioni pilota per una sessione (con caching MongoDB).
+    Ritorna lista di dict con campi OpenF1 + year, round_num.
+    """
+    db = get_db()
+    
+    # 1. Cerca in cache
+    if db:
+        coll = driver_info_collection(db, year)
+        cached = list(coll.find({"session_key": session_key}))
+        if cached:
+            logger.debug(f"Driver info cache hit: session {session_key}, {len(cached)} records")
+            return cached
+    
+    # 2. Cache miss → scarica da OpenF1
+    logger.info(f"Scaricando driver info da OpenF1 per sessione {session_key}")
+    raw = _get(f"{OPENF1_BASE}/drivers", params={"session_key": session_key})
+    if not raw:
+        logger.warning(f"Nessun driver info disponibile per sessione {session_key}")
+        return []
+    if isinstance(raw, dict):
+        raw = [raw]
+    assert isinstance(raw, list), "Expected list from OpenF1 API"
+    
+    # 3. Aggiungi metadati
+    for drv in raw:
+        drv["year"] = year
+        drv["round_num"] = round_num
+    
+    # 4. Salva in cache
+    if db:
+        coll = driver_info_collection(db, year)
+        try:
+            for drv in raw:
+                filter_dict = {
+                    "session_key": drv["session_key"],
+                    "driver_number": drv["driver_number"]
+                }
+                coll.update_one(filter_dict, {"$set": drv}, upsert=True)
+            logger.info(f"Driver info salvati in cache: {len(raw)} record")
+        except Exception as e:
+            logger.warning(f"Errore salvataggio driver info in cache: {e}")
+    
+    return raw
+
+
+# ══════════════════════════════════════════════════════════════
 # HIGH-LEVEL: carica tutto l'evento
 # ══════════════════════════════════════════════════════════════
 
@@ -251,6 +366,7 @@ class RealEventData:
     year:          int
     round_num:     int
     sessions:      Dict[str, Dict[str, float]] = field(default_factory=dict)
+    session_keys:  Dict[str, int]              = field(default_factory=dict)  # mappa nome sessione → session_key OpenF1
     grid:          Dict[str, int]              = field(default_factory=dict)
     quali_data:    Dict[str, dict]             = field(default_factory=dict)
     sprint_data:   Dict[str, dict]             = field(default_factory=dict)
@@ -301,7 +417,7 @@ def fetch_event_data(year: int, round_num: int,
         openf1_sessions = get_openf1_sessions(year, country_name)
 
         fp_sessions = [s for s in openf1_sessions
-                       if s["session_name"] in ("FP1", "FP2", "FP3", "Sprint Quali")]
+                       if s["session_name"] in ("FP1", "FP2", "FP3", "Sprint Quali", "Quali", "Sprint")]
 
         for s in fp_sessions:
             sname = s["session_name"]
@@ -309,6 +425,7 @@ def fetch_event_data(year: int, round_num: int,
             gaps = get_fp_gaps(s["session_key"])
             if gaps:
                 ev.sessions[sname] = gaps
+                ev.session_keys[sname] = s["session_key"]
                 ev.data_sources[sname] = "OpenF1 API"
                 progress.append(f"  ✅ {sname}: {len(gaps)} piloti")
             else:

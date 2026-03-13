@@ -86,7 +86,6 @@ from core.odds_parser import parse_text, parse_image_with_claude, OddsEntry
 from core.analysis  import AnalysisEngine
 from ml.models      import F1MLEngine
 from core.db         import get_db, is_mongo_available
-from core.session_stats import get_session_stats_cached
 from core.session_tracker import collect_session_info, session_info_to_dict
 from core.results    import (fetch_race_result, evaluate_predictions,
                               save_records, load_records, get_evaluated_records,
@@ -98,13 +97,8 @@ from components.eval_charts import (reliability_diagram, roi_threshold_chart,
                                      edge_accuracy_chart, outcome_scatter,
                                      metrics_kpi_cards, cs_update_chart)
 from components.charts import (edge_chart, prob_comparison_chart, session_heatmap,
-                                 feature_importance_chart, safety_car_chart,
-                                 auc_chart, multiples_table, quali_gap_bar,
-                                 boxplot_lap_times, lap_time_scatter,
-                                 sector_heatmap, sector_contribution_bar,
-                                 sector_consistency_scatter, sector_profile_clustering,
-                                 sector_performance_radar, sector_correlation_matrix,
-                                 sector_evolution_analysis)
+                                feature_importance_chart, safety_car_chart,
+                                auc_chart, multiples_table, quali_gap_bar)
 
 
 # ── Session state defaults ───────────────────────────────────────────────
@@ -156,7 +150,7 @@ if st.session_state.get("_session_info") is None:
 with st.sidebar:
     st.markdown('<div class="sidebar-section">🏎 Evento F1</div>', unsafe_allow_html=True)
 
-    year = st.selectbox("Anno", [2026, 2025, 2024], index=0, key="select_year")
+    year = st.selectbox("Anno", [2026, 2025, 2024], index=0)
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def _rounds(yr):
@@ -165,7 +159,7 @@ with st.sidebar:
     rounds = _rounds(year)
     if rounds:
         round_labels = {f"R{r['round']} — {r['name']}": r for r in rounds}
-        sel_label    = st.selectbox("Round GP", list(round_labels.keys()), key="select_round")
+        sel_label    = st.selectbox("Round GP", list(round_labels.keys()))
         sel_round    = round_labels[sel_label]
     else:
         st.warning("Calendario non disponibile")
@@ -212,7 +206,7 @@ with st.sidebar:
     st.markdown('<div class="sidebar-section">⚠️ Problemi Sessione</div>', unsafe_allow_html=True)
     issues_raw = st.text_area("Driver=valore (0=ok, 1=min, 2=grave)",
         placeholder="Antonelli=2\nVerstappen=2",
-        height=80, key="issues_raw")
+        height=80)
     issues_map = {}
     for line in issues_raw.splitlines():
         if '=' in line:
@@ -265,10 +259,9 @@ col5.metric("Multipla top", f"€{st.session_state['multiples'][0].win:.2f}" if 
 # ══════════════════════════════════════════════════════════════════════
 # TABS
 # ══════════════════════════════════════════════════════════════════════
-tab_about, tab_data, tab_advanced, tab_odds, tab_ml, tab_report, tab_eval = st.tabs([
+tab_about, tab_data, tab_odds, tab_ml, tab_report, tab_eval = st.tabs([
     "🏠 Come Usare",
     "📡 Dati Sessioni",
-    "📊 Statistiche Avanzate",
     "📊 Inserisci Quote",
     "🤖 Analisi ML",
     "📋 Report & Multiple",
@@ -315,408 +308,26 @@ with tab_data:
         st.plotly_chart(safety_car_chart(sc_hist, ev.circuit), width='stretch', key="pc_3")
 
 
-        # Statistiche dettagliate per sessione
-        st.markdown("---")
-        st.subheader("📊 Statistiche dettagliate per sessione")
-        # Filtra sessioni con session_key (FP, Quali, Sprint, Sprint Quali)
-        available_sessions = [s for s in ev.sessions.keys() if s in ev.session_keys]
-        # Aggiungi opzione "Tutte le sessioni"
-        if available_sessions:
-            session_options = ["Tutte le sessioni"] + available_sessions
-            selected_session = st.selectbox("Seleziona una sessione", session_options, key="session_stats")
-            
-            if selected_session == "Tutte le sessioni":
-                # Aggrega dati su tutte le sessioni
-                all_valid_laps = []
-                all_driver_info = None
-                all_lap_summary = {"total_laps": 0, "valid_laps": 0, "invalid_laps": 0, "pit_out_laps": 0}
-                for sess_name in available_sessions:
-                    session_key = ev.session_keys[sess_name]
-                    with st.spinner(f"Recupero dati per {sess_name}..."):
-                        stats = get_session_stats_cached(session_key, ev.year, ev.round_num)
-                        if stats:
-                            all_valid_laps.extend(stats.get("valid_laps", []))
-                            if all_driver_info is None:
-                                all_driver_info = stats.get("driver_info", [])
-                            # Aggrega lap_summary
-                            summ = stats.get("lap_summary", {})
-                            all_lap_summary["total_laps"] += summ.get("total_laps", 0)
-                            all_lap_summary["valid_laps"] += summ.get("valid_laps", 0)
-                            all_lap_summary["invalid_laps"] += summ.get("invalid_laps", 0)
-                            all_lap_summary["pit_out_laps"] += summ.get("pit_out_laps", 0)
-                if all_valid_laps:
-                    from core.session_stats import aggregate_lap_times_by_driver
-                    driver_stats = aggregate_lap_times_by_driver(all_valid_laps)
-                    driver_info = all_driver_info if all_driver_info else []
-                    stats = {"driver_stats": driver_stats, "driver_info": driver_info, "valid_laps": all_valid_laps, "lap_summary": all_lap_summary}
-                else:
-                    stats = None
-            else:
-                session_key = ev.session_keys[selected_session]
-                with st.spinner(f"Calcolo statistiche per {selected_session}..."):
-                    stats = get_session_stats_cached(session_key, ev.year, ev.round_num)
-            
-            # Elaborazione comune (sia per sessione singola che aggregata)
-            if stats:
-                # Estrai informazioni per filtri
-                driver_stats = stats["driver_stats"]
-                driver_info = stats["driver_info"]
-                
-                # Mappa driver_number -> (nome, team)
-                driver_map = {}
-                team_drivers = {}
-                for drv in driver_info:
-                    num = drv["driver_number"]
-                    name = drv.get("full_name", drv.get("name_acronym", str(num)))
-                    team = drv.get("team_name", "Unknown")
-                    driver_map[num] = {"name": name, "team": team}
-                    team_drivers.setdefault(team, []).append(name)
-                
-                # Lista piloti (nome) e scuderie
-                all_drivers = sorted([driver_map[num]["name"] for num in driver_stats.keys() if num in driver_map])
-                all_teams = sorted(team_drivers.keys())
-                
-                # Filtri avanzati
-                with st.expander("🔍 Filtri avanzati", expanded=False):
-                    col_f1, col_f2, col_f3 = st.columns(3)
-                    with col_f1:
-                        selected_drivers = st.multiselect(
-                            "Piloti",
-                            options=all_drivers,
-                            default=all_drivers,
-                            help="Seleziona i piloti da visualizzare",
-                            key="drivers_session"
-                        )
-                    with col_f2:
-                        selected_teams = st.multiselect(
-                            "Scuderie",
-                            options=all_teams,
-                            default=all_teams,
-                            help="Seleziona le scuderie da visualizzare",
-                            key="teams_session"
-                        )
-                    with col_f3:
-                        sort_by_min_time = st.checkbox("Ordina boxplot per minimo tempo crescente", value=True, key="sort_min_time")
-                        show_all_drivers = st.checkbox("Mostra tutti i piloti (anche senza dati)", value=False, key="show_all_drivers")
-                
-                # Filtra driver_stats in base a piloti e scuderie selezionati
-                filtered_driver_stats = {}
-                for drv_num, stats_data in driver_stats.items():
-                    if drv_num not in driver_map:
-                        continue
-                    drv_name = driver_map[drv_num]["name"]
-                    drv_team = driver_map[drv_num]["team"]
-                    
-                    # Controlla se il pilota è selezionato
-                    if selected_drivers and drv_name not in selected_drivers:
-                        continue
-                    
-                    # Controlla se la scuderia è selezionata
-                    if selected_teams and drv_team not in selected_teams:
-                        continue
-                    
-                    # Se non ci sono lap times validi e non vogliamo mostrarli, salta
-                    laps = stats_data.get("laps", [])
-                    durations = [lap["lap_duration"] for lap in laps if lap.get("lap_duration") is not None]
-                    if not durations and not show_all_drivers:
-                        continue
-                    
-                    filtered_driver_stats[drv_num] = stats_data
-                
-                # Filtra valid_laps per i piloti selezionati
-                valid_laps = stats.get("valid_laps", [])
-                filtered_valid_laps = []
-                if selected_drivers or selected_teams:
-                    for lap in valid_laps:
-                        drv_num = lap.get("driver_number")
-                        if drv_num in driver_map:
-                            drv_name = driver_map[drv_num]["name"]
-                            drv_team = driver_map[drv_num]["team"]
-                            if selected_drivers and drv_name not in selected_drivers:
-                                continue
-                            if selected_teams and drv_team not in selected_teams:
-                                continue
-                            filtered_valid_laps.append(lap)
-                else:
-                    filtered_valid_laps = valid_laps
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.plotly_chart(boxplot_lap_times(filtered_driver_stats, driver_info, sort_by_min_time=sort_by_min_time), width='stretch', key=f"box_{selected_session}")
-                with col2:
-                    st.plotly_chart(lap_time_scatter(filtered_valid_laps, driver_info), width='stretch', key=f"scatter_{selected_session}")
-                # Summary metrics
-                st.markdown("**Riepilogo giri**")
-                cols = st.columns(4)
-                cols[0].metric("Giri totali", stats["lap_summary"]["total_laps"])
-                cols[1].metric("Giri validi", stats["lap_summary"]["valid_laps"])
-                cols[2].metric("Giri invalidi", stats["lap_summary"]["invalid_laps"])
-                cols[3].metric("Pit-out", stats["lap_summary"]["pit_out_laps"])
-            else:
-                st.warning("Nessun dato lap time disponibile per questa sessione.")
-        else:
-            st.info("Nessuna sessione con dati lap times disponibile.")
-
-
         # Tabella raw
         with st.expander("📋 Dati sessioni grezzi"):
             all_drivers = sorted(ev.grid.keys(), key=lambda d: ev.grid.get(d,99))
             rows = []
             for d in all_drivers:
                 row = {"Pilota": d, "Griglia": ev.grid.get(d,"?")}
-                for s in ['FP1','FP2','FP3','Sprint Quali','Sprint','Quali']:
+                for s in ['FP1','FP2','FP3','Sprint','Quali']:
                     row[s] = f"{ev.sessions.get(s,{}).get(d,'-'):.3f}s" if isinstance(ev.sessions.get(s,{}).get(d), float) else "—"
                 rows.append(row)
             st.dataframe(pd.DataFrame(rows).set_index("Pilota"), width='stretch')
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 2 — Statistiche Avanzate
-# ─────────────────────────────────────────────────────────────────────
-with tab_advanced:
-    
-    def render_advanced_tab(ev):
-        st.subheader("📊 Statistiche Avanzate — Analisi Settoriale e Profili Prestazionali")
-        
-        if not ev:
-            st.info("👈 Seleziona un GP nella sidebar e premi **Carica dati sessioni**")
-            return
-        
-        # Filtra sessioni con session_key (FP, Quali, Sprint, Sprint Quali)
-        available_sessions = [s for s in ev.sessions.keys() if s in ev.session_keys]
-        if not available_sessions:
-            st.info("Nessuna sessione con dati lap times disponibile.")
-            return
-        
-        # Selezione sessione e filtri
-        col_sel1, col_sel2 = st.columns([2, 3])
-        with col_sel1:
-            session_options = ["Tutte le sessioni"] + available_sessions
-            selected_session = st.selectbox("Seleziona una sessione", session_options, key="advanced_session")
-        
-        with col_sel2:
-            # Filtri piloti e scuderie (saranno popolati dopo aver caricato i dati)
-            st.markdown("**Filtri** (applicati dopo caricamento dati)")
-            filter_placeholder = st.empty()
-        
-        # Caricamento dati
-        sector_stats = None
-        driver_info = None
-        valid_laps = []  # Per analisi evolution
-        
-        if selected_session == "Tutte le sessioni":
-            # Aggrega dati su tutte le sessioni
-            all_valid_laps = []
-            all_driver_info = None
-            for sess_name in available_sessions:
-                session_key = ev.session_keys[sess_name]
-                with st.spinner(f"Recupero dati per {sess_name}..."):
-                    stats = get_session_stats_cached(session_key, ev.year, ev.round_num)
-                    if stats:
-                        all_valid_laps.extend(stats.get("valid_laps", []))
-                        if all_driver_info is None:
-                            all_driver_info = stats.get("driver_info", [])
-            if all_valid_laps:
-                from core.session_stats import aggregate_sector_times_by_driver
-                sector_stats = aggregate_sector_times_by_driver(all_valid_laps)
-                driver_info = all_driver_info if all_driver_info else []
-                valid_laps = all_valid_laps  # Per evolution analysis
-            else:
-                st.warning("Nessun dato lap time disponibile per le sessioni selezionate.")
-                return
-        else:
-            session_key = ev.session_keys[selected_session]
-            with st.spinner(f"Calcolo statistiche settoriali per {selected_session}..."):
-                stats = get_session_stats_cached(session_key, ev.year, ev.round_num)
-                if stats and "sector_stats" in stats:
-                    sector_stats = stats["sector_stats"]
-                    driver_info = stats["driver_info"]
-                    valid_laps = stats.get("valid_laps", [])  # Per evolution analysis
-                else:
-                    st.warning("Nessun dato settoriale disponibile per questa sessione.")
-                    return
-        
-        if not sector_stats or not driver_info:
-            st.warning("Dati settoriali insufficienti per l'analisi.")
-            return
-        
-        # Mappa driver_number -> nome e team per filtri
-        driver_map = {}
-        team_drivers = {}
-        for drv in driver_info:
-            num = drv["driver_number"]
-            name = drv.get("full_name", drv.get("name_acronym", str(num)))
-            team = drv.get("team_name", "Unknown")
-            driver_map[num] = {"name": name, "team": team}
-            team_drivers.setdefault(team, []).append(name)
-        
-        all_drivers = sorted([driver_map[num]["name"] for num in sector_stats.keys() if num in driver_map])
-        all_teams = sorted(team_drivers.keys())
-        
-        # Filtri avanzati (popolati ora)
-        with col_sel2:
-            selected_drivers = st.multiselect(
-                "Piloti",
-                options=all_drivers,
-                default=all_drivers,
-                help="Seleziona i piloti da visualizzare",
-                key="drivers_advanced"
-            )
-            selected_teams = st.multiselect(
-                "Scuderie",
-                options=all_teams,
-                default=all_teams,
-                help="Seleziona le scuderie da visualizzare",
-                key="teams_advanced"
-            )
-        
-        # Filtra sector_stats in base a piloti e scuderie selezionati
-        filtered_sector_stats = {}
-        for drv_num, stats_data in sector_stats.items():
-            if drv_num not in driver_map:
-                continue
-            drv_name = driver_map[drv_num]["name"]
-            drv_team = driver_map[drv_num]["team"]
-            
-            if selected_drivers and drv_name not in selected_drivers:
-                continue
-            if selected_teams and drv_team not in selected_teams:
-                continue
-            
-            filtered_sector_stats[drv_num] = stats_data
-        
-        if not filtered_sector_stats:
-            st.warning("Nessun pilota corrisponde ai filtri selezionati.")
-            return
-        
-        # Filtra driver_info per i piloti selezionati
-        filtered_driver_info = [drv for drv in driver_info if drv["driver_number"] in filtered_sector_stats]
-        
-        # Tabs per diverse visualizzazioni
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-            "🔥 Heatmap Settori",
-            "📊 Contributo Percentuale",
-            "📈 Consistenza Prestazionale",
-            "🧬 Clustering Profili",
-            "📡 Performance Radar",
-            "🔗 Correlation Matrix",
-            "📈 Session Evolution"
-        ])
-        
-        with tab1:
-            st.plotly_chart(sector_heatmap(filtered_sector_stats, filtered_driver_info), width='stretch', use_container_width=True)
-            st.markdown("""
-            **Interpretazione heatmap:**
-            - Colori più scuri (viola) indicano tempi più bassi (migliori prestazioni)
-            - Colori più chiari (gialli) indicano tempi più alti
-            - Confronto diretto delle performance per settore tra piloti
-            """)
-        
-        with tab2:
-            st.plotly_chart(sector_contribution_bar(filtered_sector_stats, filtered_driver_info), width='stretch', use_container_width=True)
-            st.markdown("""
-            **Contributo percentuale dei settori:**
-            - Mostra la percentuale del tempo totale spesa in ogni settore
-            - Utile per identificare punti di forza/debolezza dei piloti
-            - Settori con percentuale più alta richiedono ottimizzazione
-            """)
-        
-        with tab3:
-            st.plotly_chart(sector_consistency_scatter(filtered_sector_stats, filtered_driver_info), width='stretch', use_container_width=True)
-            st.markdown("""
-            **Analisi di consistenza:**
-            - **Asse X**: Tempo medio per settore (s)
-            - **Asse Y**: Deviazione standard (variabilità)
-            - Punti in basso a sinistra = veloci e consistenti (ideale)
-            - Punti in alto a destra = lenti e variabili
-            """)
-        
-        with tab4:
-            st.plotly_chart(sector_profile_clustering(filtered_sector_stats, filtered_driver_info), width='stretch', use_container_width=True)
-            st.markdown("""
-            **Clustering profili prestazionali:**
-            - **PCA (Principal Component Analysis)**: riduzione dimensionale dei 3 settori in 2 componenti
-            - Pilot i vicini nello spazio hanno profili di prestazioni simili
-            - Utile per identificare gruppi omogenei (es. piloti bravi in settori tecnici vs. velocità pura)
-            """)
-         
-        with tab5:
-            st.plotly_chart(sector_performance_radar(filtered_sector_stats, filtered_driver_info), width='stretch', use_container_width=True)
-            st.markdown("""
-            **Performance Radar — Profilo prestazionale:**
-            - Confronto relativo delle performance nei tre settori
-            - Punteggio normalizzato: 100 = uguale al miglior tempo, 0 = più lento
-            - Area più grande = profilo più completo (performante in tutti i settori)
-            - Utile per identificare punti di forza/debolezza specifici
-            """)
-        
-        with tab6:
-            st.plotly_chart(sector_correlation_matrix(filtered_sector_stats, filtered_driver_info), width='stretch', use_container_width=True)
-            st.markdown("""
-            **Correlation Matrix — Relazioni tra variabili:**
-            - **Valori positivi (blu)**: correlazione positiva (es. settori correlati)
-            - **Valori negativi (rosso)**: correlazione inversa
-            - **Totale** è la somma dei tre settori (alta correlazione attesa)
-            - Correlazioni inattese possono indicare trade-off prestazionali
-            """)
-        
-        with tab7:
-            # Per evolution analysis abbiamo bisogno dei valid_laps
-            valid_laps_for_evolution = valid_laps  # Usa i valid_laps già caricati
-            
-            if valid_laps_for_evolution:
-                st.plotly_chart(sector_evolution_analysis(valid_laps_for_evolution, filtered_sector_stats, filtered_driver_info), width='stretch', use_container_width=True)
-                st.markdown("""
-                **Session Evolution — Evoluzione prestazioni:**
-                - Tracciamento dei tempi settoriali durante la sessione
-                - **Asse X**: Numero giro
-                - **Asse Y**: Tempo del settore (s)
-                - Mostra massimo 5 piloti per leggibilità
-                - Utile per analisi degrado gomme, adattamento al tracciato, carico carburante
-                """)
-            else:
-                st.warning("Dati lap-by-lap non disponibili per l'analisi di evoluzione.")
-        
-        # Riepilogo statistiche
-        with st.expander("📋 Riepilogo statistiche settoriali"):
-            rows = []
-            for drv_num, stats_data in filtered_sector_stats.items():
-                drv_name = driver_map[drv_num]["name"]
-                drv_team = driver_map[drv_num]["team"]
-                sector_data = stats_data.get("sector_stats", {})
-                contrib_data = stats_data.get("contribution_stats", {})
-                
-                row = {"Pilota": drv_name, "Scuderia": drv_team}
-                for s_key, s_name in [("sector1", "S1"), ("sector2", "S2"), ("sector3", "S3")]:
-                    s_stats = sector_data.get(s_key)
-                    if s_stats:
-                        row[f"{s_name} medio"] = f"{s_stats.get('mean', 0):.3f}s"
-                        row[f"{s_name} std"] = f"{s_stats.get('std', 0):.3f}s"
-                    else:
-                        row[f"{s_name} medio"] = "—"
-                        row[f"{s_name} std"] = "—"
-                
-                if contrib_data:
-                    row["S1 %"] = f"{contrib_data.get('sector1_pct_mean', 0):.1f}%"
-                    row["S2 %"] = f"{contrib_data.get('sector2_pct_mean', 0):.1f}%"
-                    row["S3 %"] = f"{contrib_data.get('sector3_pct_mean', 0):.1f}%"
-                
-                rows.append(row)
-            
-            if rows:
-                st.dataframe(pd.DataFrame(rows).set_index("Pilota"), width='stretch')
-    
-    render_advanced_tab(ev)
-
-
-# ─────────────────────────────────────────────────────────────────────
-# TAB 3 — Inserisci Quote
+# TAB 2 — Inserisci Quote
 # ─────────────────────────────────────────────────────────────────────
 with tab_odds:
     st.subheader("📊 Inserisci le quote del bookmaker")
 
     mode = st.radio("Modalità input", ["✍️ Testo libero", "📷 Screenshot (Claude Vision)", "🗂️ Esempio demo"],
-                    horizontal=True, key="input_mode")
+                    horizontal=True)
 
     if mode == "✍️ Testo libero":
         st.markdown("""
@@ -735,7 +346,7 @@ with tab_odds:
         Safety Car: 1.60
         ```
         """)
-        odds_text = st.text_area("Incolla le quote qui", height=260, placeholder="Leclerc vs Norris: 1.25 / 3.50\nG1: Russell=1.25, Antonelli=4.50...", key="odds_text")
+        odds_text = st.text_area("Incolla le quote qui", height=260, placeholder="Leclerc vs Norris: 1.25 / 3.50\nG1: Russell=1.25, Antonelli=4.50...")
         if st.button("✅ Analizza quote", width='stretch') and odds_text.strip():
             st.session_state["entries"] = parse_text(odds_text)
             st.success(f"✅ {len(st.session_state['entries'])} selezioni caricate")
@@ -988,7 +599,7 @@ with tab_eval:
     with st.expander("✏️ Inserisci risultati manualmente (se API non disponibile)"):
         st.markdown("**Formato:** `Pilota=posizione` (es: `Russell=1, Norris=2, Leclerc=3`)")
         manual_results = st.text_area("Risultati gara", height=100,
-            placeholder="Russell=1\nNorris=2\nLeclerc=3\nHamilton=4\nPiastri=5\nAntonelli=6", key="manual_results")
+            placeholder="Russell=1\nNorris=2\nLeclerc=3\nHamilton=4\nPiastri=5\nAntonelli=6")
         if st.button("✅ Applica risultati manuali") and manual_results.strip():
             from core.results import RaceResult, DriverResult
             rr_manual = RaceResult(

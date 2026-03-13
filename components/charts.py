@@ -6,6 +6,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
+import re
 from typing import List, Dict
 from core.analysis import Pred, Multipla
 
@@ -21,6 +22,27 @@ O     = "#ff6d00"
 C     = "#18ffff"
 W     = "#f0f0f0"
 GR    = "#555575"
+
+
+def _normalize_color(color: str) -> str:
+    """
+    Assicura che i colori hex abbiano il prefisso '#'.
+    Se il colore è già un CSS named color o già valido, lo lascia intatto.
+    """
+    if not color:
+        return GR
+    # Se è già un hex con '#', ok
+    if color.startswith('#'):
+        return color
+    # Se è una stringa di 6 o 8 caratteri esadecimali (RGB o RGBA), aggiungi '#'
+    if re.match(r'^[0-9A-Fa-f]{6}$', color) or re.match(r'^[0-9A-Fa-f]{8}$', color):
+        return '#' + color
+    # Se è una stringa di 3 o 4 caratteri esadecimali (short form), aggiungi '#'
+    if re.match(r'^[0-9A-Fa-f]{3}$', color) or re.match(r'^[0-9A-Fa-f]{4}$', color):
+        return '#' + color
+    # Altrimenti assumi sia un named color CSS valido
+    return color
+
 
 LAYOUT = dict(
     paper_bgcolor=BG, plot_bgcolor=CARD,
@@ -246,4 +268,679 @@ def quali_gap_bar(quali: Dict[str, dict]) -> go.Figure:
         xaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
         yaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
     )
+    return fig
+
+
+def boxplot_lap_times(driver_stats: Dict[int, Dict], driver_info: List[dict], sort_by_min_time: bool = True) -> go.Figure:
+    """
+    Boxplot dei lap times per pilota (solo giri validi).
+    driver_stats: output di compute_session_stats['driver_stats']
+    sort_by_min_time: se True, ordina i box per minimo tempo crescente
+    """
+    # Mappa driver_number -> nome visualizzato
+    driver_names = {}
+    driver_colors = {}
+    for drv in driver_info:
+        num = drv["driver_number"]
+        driver_names[num] = drv.get("full_name", drv.get("name_acronym", str(num)))
+        driver_colors[num] = _normalize_color(drv.get("team_colour", GR))
+    
+    # Prepara dati per boxplot
+    data = []
+    
+    # Filtra e ordina i driver
+    items = list(driver_stats.items())
+    
+    if sort_by_min_time:
+        # Ordina per minimo tempo crescente (il pilota più veloce prima)
+        items.sort(key=lambda x: min([lap["lap_duration"] for lap in x[1].get("laps", []) if lap.get("lap_duration") is not None], default=float('inf')))
+    else:
+        # Ordina per nome pilota
+        items.sort(key=lambda x: driver_names.get(x[0], str(x[0])))
+    
+    for drv_num, stats in items:
+        laps = stats.get("laps", [])
+        durations = [lap["lap_duration"] for lap in laps if lap.get("lap_duration") is not None]
+        if not durations:
+            continue
+        name = driver_names.get(drv_num, str(drv_num))
+        color = _normalize_color(driver_colors.get(drv_num, GR))
+        data.append(go.Box(
+            y=durations,
+            name=name,
+            marker_color=color,
+            boxmean='sd',
+            hovertemplate=f"<b>{name}</b><br>Min: %{{y:.3f}}<br>Q1: %{{lower:.3f}}<br>Mediana: %{{median:.3f}}<br>Q3: %{{upper:.3f}}<br>Max: %{{y:.3f}}<extra></extra>"
+        ))
+    
+    fig = go.Figure(data)
+    fig.update_layout(**LAYOUT,
+        title="◈ BOXPLOT LAP TIMES — Distribuzione tempi per pilota" + (" (ordinato per minimo tempo crescente)" if sort_by_min_time else ""),
+        yaxis_title="Tempo (s)",
+        xaxis_title="Pilota",
+        height=480,
+        showlegend=False,
+        xaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+        yaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+    )
+    return fig
+
+
+def lap_time_scatter(lap_records: List[dict], driver_info: List[dict]) -> go.Figure:
+    """
+    Scatter plot lap number vs lap duration, colorato per pilota.
+    lap_records: lista di giri validi (con lap_number, lap_duration, driver_number)
+    """
+    # Mappa driver -> nome e colore
+    driver_names = {}
+    driver_colors = {}
+    for drv in driver_info:
+        num = drv["driver_number"]
+        driver_names[num] = drv.get("full_name", drv.get("name_acronym", str(num)))
+        driver_colors[num] = _normalize_color(drv.get("team_colour", GR))
+    
+    # Raggruppa per pilota per tracce separate
+    traces = []
+    for drv_num in set(lap["driver_number"] for lap in lap_records):
+        drv_laps = [lap for lap in lap_records if lap["driver_number"] == drv_num]
+        lap_nums = [lap["lap_number"] for lap in drv_laps]
+        lap_durs = [lap["lap_duration"] for lap in drv_laps]
+        name = driver_names.get(drv_num, str(drv_num))
+        color = _normalize_color(driver_colors.get(drv_num, GR))
+        
+        traces.append(go.Scatter(
+            x=lap_nums,
+            y=lap_durs,
+            mode='markers+lines',
+            name=name,
+            marker_color=color,
+            line_color=color,
+            opacity=0.8,
+            hovertemplate=f"<b>{name}</b><br>Lap %{{x}}<br>%{{y:.3f}} s<extra></extra>"
+        ))
+    
+    fig = go.Figure(traces)
+    fig.update_layout(**LAYOUT,
+        title="◈ LAP TIMES PROGRESSION — Evoluzione tempi per pilota",
+        xaxis_title="Numero giro",
+        yaxis_title="Tempo (s)",
+        height=500,
+        xaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+        yaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+    )
+    return fig
+
+
+def sector_heatmap(sector_stats: Dict[int, Dict], driver_info: List[dict]) -> go.Figure:
+    """
+    Heatmap dei tempi medi per settore (S1, S2, S3) per pilota.
+    sector_stats: output di aggregate_sector_times_by_driver
+    """
+    # Mappa driver_number -> nome visualizzato
+    driver_names = {}
+    for drv in driver_info:
+        num = drv["driver_number"]
+        driver_names[num] = drv.get("full_name", drv.get("name_acronym", str(num)))
+    
+    # Costruisci matrice: piloti (righe) x settori (colonne)
+    drivers = []
+    sectors = ["Sector 1", "Sector 2", "Sector 3"]
+    data_matrix = []
+    
+    for drv_num, stats in sector_stats.items():
+        driver_name = driver_names.get(drv_num, str(drv_num))
+        drivers.append(driver_name)
+        row = []
+        sector_data = stats.get("sector_stats", {})
+        for s_key in ["sector1", "sector2", "sector3"]:
+            s_stats = sector_data.get(s_key)
+            if s_stats and s_stats.get("mean") is not None:
+                row.append(s_stats["mean"])
+            else:
+                row.append(None)
+        data_matrix.append(row)
+    
+    # Crea heatmap
+    fig = go.Figure(data=go.Heatmap(
+        z=data_matrix,
+        x=sectors,
+        y=drivers,
+        colorscale='Viridis',
+        hoverongaps=False,
+        hoverinfo='z',
+        colorbar=dict(title=dict(text="Tempo medio (s)", side="right")),
+        text=[[f"{val:.3f}s" if val is not None else "N/A" for val in row] for row in data_matrix],
+        texttemplate="%{text}",
+        textfont={"size": 10},
+    ))
+    
+    fig.update_layout(**LAYOUT,
+        title="◈ SECTOR PERFORMANCE HEATMAP — Tempi medi per settore",
+        xaxis_title="Settore",
+        yaxis_title="Pilota",
+        height=max(400, len(drivers) * 25 + 100),
+        xaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+        yaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+    )
+    
+    return fig
+
+
+def sector_contribution_bar(sector_stats: Dict[int, Dict], driver_info: List[dict]) -> go.Figure:
+    """
+    Grafico a barre del contributo percentuale dei settori al tempo totale per pilota.
+    """
+    # Mappa driver_number -> nome visualizzato
+    driver_names = {}
+    for drv in driver_info:
+        num = drv["driver_number"]
+        driver_names[num] = drv.get("full_name", drv.get("name_acronym", str(num)))
+    
+    # Raccogli dati per grafico a barre raggruppate
+    drivers = []
+    s1_contrib = []
+    s2_contrib = []
+    s3_contrib = []
+    
+    for drv_num, stats in sector_stats.items():
+        contrib_stats = stats.get("contribution_stats")
+        if not contrib_stats:
+            continue
+        drivers.append(driver_names.get(drv_num, str(drv_num)))
+        s1_contrib.append(contrib_stats.get("sector1_pct_mean"))
+        s2_contrib.append(contrib_stats.get("sector2_pct_mean"))
+        s3_contrib.append(contrib_stats.get("sector3_pct_mean"))
+    
+    if not drivers:
+        # Fallback: grafico vuoto
+        fig = go.Figure()
+        fig.update_layout(**LAYOUT,
+            title="◈ SECTOR CONTRIBUTION — Nessun dato disponibile",
+            height=400,
+        )
+        return fig
+    
+    # Crea tracce per ogni settore
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=drivers,
+        y=s1_contrib,
+        name='Sector 1',
+        marker_color='#FF6B6B',
+        hovertemplate="<b>%{x}</b><br>Sector 1: %{y:.1f}%<extra></extra>"
+    ))
+    fig.add_trace(go.Bar(
+        x=drivers,
+        y=s2_contrib,
+        name='Sector 2',
+        marker_color='#4ECDC4',
+        hovertemplate="<b>%{x}</b><br>Sector 2: %{y:.1f}%<extra></extra>"
+    ))
+    fig.add_trace(go.Bar(
+        x=drivers,
+        y=s3_contrib,
+        name='Sector 3',
+        marker_color='#45B7D1',
+        hovertemplate="<b>%{x}</b><br>Sector 3: %{y:.1f}%<extra></extra>"
+    ))
+    
+    fig.update_layout(**LAYOUT,
+        title="◈ SECTOR CONTRIBUTION — Percentuale del tempo totale per settore",
+        xaxis_title="Pilota",
+        yaxis_title="Percentuale del giro (%)",
+        barmode='group',
+        height=max(450, len(drivers) * 30 + 150),
+        xaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+        yaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+    )
+    
+    return fig
+
+
+def sector_consistency_scatter(sector_stats: Dict[int, Dict], driver_info: List[dict]) -> go.Figure:
+    """
+    Scatter plot di consistenza: deviazione standard vs tempo medio per settore.
+    """
+    # Mappa driver_number -> nome e colore
+    driver_names = {}
+    driver_colors = {}
+    for drv in driver_info:
+        num = drv["driver_number"]
+        driver_names[num] = drv.get("full_name", drv.get("name_acronym", str(num)))
+        driver_colors[num] = _normalize_color(drv.get("team_colour", GR))
+    
+    # Crea subplot per ogni settore
+    fig = make_subplots(
+        rows=1, cols=3,
+        subplot_titles=("Sector 1", "Sector 2", "Sector 3"),
+        horizontal_spacing=0.1,
+    )
+    
+    for col, s_key in enumerate(["sector1", "sector2", "sector3"], 1):
+        x_vals = []
+        y_vals = []
+        texts = []
+        colors = []
+        
+        for drv_num, stats in sector_stats.items():
+            sector_data = stats.get("sector_stats", {}).get(s_key)
+            if not sector_data or sector_data.get("mean") is None or sector_data.get("std") is None:
+                continue
+            x_vals.append(sector_data["mean"])
+            y_vals.append(sector_data["std"])
+            texts.append(driver_names.get(drv_num, str(drv_num)))
+            colors.append(driver_colors.get(drv_num, GR))
+        
+        if x_vals:
+            fig.add_trace(
+                go.Scatter(
+                    x=x_vals,
+                    y=y_vals,
+                    mode='markers+text',
+                    text=texts,
+                    textposition='top center',
+                    marker=dict(size=10, color=colors, line=dict(width=1, color='white')),
+                    hovertemplate="<b>%{text}</b><br>Tempo medio: %{x:.3f}s<br>Deviazione: %{y:.3f}s<extra></extra>",
+                    showlegend=False,
+                ),
+                row=1, col=col
+            )
+    
+    fig.update_layout(**LAYOUT,
+        title="◈ SECTOR CONSISTENCY — Deviazione standard vs tempo medio",
+        height=500,
+    )
+    fig.update_xaxes(title_text="Tempo medio (s)", gridcolor="rgba(85,85,117,0.27)")
+    fig.update_yaxes(title_text="Deviazione standard (s)", gridcolor="rgba(85,85,117,0.27)")
+    
+    return fig
+
+
+def sector_profile_clustering(sector_stats: Dict[int, Dict], driver_info: List[dict]) -> go.Figure:
+    """
+    Clustering dei piloti basato sui profili dei settori (tempi medi).
+    Utilizza PCA per riduzione dimensionale e visualizzazione 2D.
+    """
+    try:
+        from sklearn.decomposition import PCA
+        from sklearn.preprocessing import StandardScaler
+        has_sklearn = True
+    except ImportError:
+        has_sklearn = False
+    
+    # Mappa driver_number -> nome e colore
+    driver_names = {}
+    driver_colors = {}
+    for drv in driver_info:
+        num = drv["driver_number"]
+        driver_names[num] = drv.get("full_name", drv.get("name_acronym", str(num)))
+        driver_colors[num] = _normalize_color(drv.get("team_colour", GR))
+    
+    # Costruisci matrice delle features: per ogni pilota, tempi medi dei 3 settori
+    features = []
+    drivers = []
+    colors = []
+    
+    for drv_num, stats in sector_stats.items():
+        sector_data = stats.get("sector_stats", {})
+        # Estrai tempi medi per ogni settore
+        s1 = sector_data.get("sector1", {}).get("mean")
+        s2 = sector_data.get("sector2", {}).get("mean")
+        s3 = sector_data.get("sector3", {}).get("mean")
+        
+        if s1 is not None and s2 is not None and s3 is not None:
+            features.append([s1, s2, s3])
+            drivers.append(driver_names.get(drv_num, str(drv_num)))
+            colors.append(driver_colors.get(drv_num, GR))
+    
+    if len(features) < 3:
+        # Troppi pochi dati per clustering
+        fig = go.Figure()
+        fig.update_layout(**LAYOUT,
+            title="◈ SECTOR PROFILE CLUSTERING — Dati insufficienti",
+            height=500,
+        )
+        return fig
+    
+    features = np.array(features)
+    
+    if has_sklearn:
+        # Standardizza le features
+        scaler = StandardScaler()
+        features_scaled = scaler.fit_transform(features)
+        
+        # Applica PCA per ridurre a 2 dimensioni
+        pca = PCA(n_components=2)
+        components = pca.fit_transform(features_scaled)
+        
+        # Spiegazione varianza
+        var_exp = pca.explained_variance_ratio_
+        x_label = f"PC1 ({var_exp[0]*100:.1f}% var.)"
+        y_label = f"PC2 ({var_exp[1]*100:.1f}% var.)"
+        
+        title_suffix = " (PCA)"
+    else:
+        # Fallback: usa le prime due dimensioni (S1 vs S2)
+        components = features[:, :2]
+        x_label = "Tempo medio Sector 1 (s)"
+        y_label = "Tempo medio Sector 2 (s)"
+        title_suffix = " (S1 vs S2)"
+    
+    # Crea scatter plot
+    fig = go.Figure()
+    
+    for i, driver in enumerate(drivers):
+        fig.add_trace(go.Scatter(
+            x=[components[i, 0]],
+            y=[components[i, 1]],
+            mode='markers+text',
+            text=[driver],
+            textposition='top center',
+            marker=dict(size=15, color=colors[i], line=dict(width=1, color='white')),
+            name=driver,
+            hovertemplate=f"<b>{driver}</b><br>PC1: %{{x:.3f}}<br>PC2: %{{y:.3f}}<extra></extra>",
+            showlegend=False,
+        ))
+    
+    fig.update_layout(**LAYOUT,
+        title=f"◈ SECTOR PROFILE CLUSTERING — Analisi profili prestazionali{title_suffix}",
+        xaxis_title=x_label,
+        yaxis_title=y_label,
+        height=600,
+        xaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+        yaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+    )
+    
+    # Aggiungi linee di riferimento per la media
+    fig.add_hline(y=np.mean(components[:, 1]), line_dash="dot", line_color=GR, opacity=0.5)
+    fig.add_vline(x=np.mean(components[:, 0]), line_dash="dot", line_color=GR, opacity=0.5)
+    
+    return fig
+
+
+def sector_performance_radar(sector_stats: Dict[int, Dict], driver_info: List[dict]) -> go.Figure:
+    """
+    Radar chart dei profili prestazionali per pilota.
+    Mostra il tempo relativo rispetto al miglior tempo per ogni settore.
+    """
+    # Mappa driver_number -> nome e colore
+    driver_names = {}
+    driver_colors = {}
+    for drv in driver_info:
+        num = drv["driver_number"]
+        driver_names[num] = drv.get("full_name", drv.get("name_acronym", str(num)))
+        driver_colors[num] = _normalize_color(drv.get("team_colour", GR))
+    
+    # Raccoglie tempi medi per ogni settore
+    sector_data = {}
+    for drv_num, stats in sector_stats.items():
+        sector_stats_data = stats.get("sector_stats", {})
+        driver_name = driver_names.get(drv_num, str(drv_num))
+        
+        times = []
+        for s_key in ["sector1", "sector2", "sector3"]:
+            s_stats = sector_stats_data.get(s_key)
+            if s_stats and s_stats.get("mean") is not None:
+                times.append(s_stats["mean"])
+            else:
+                times.append(None)
+        
+        if all(t is not None for t in times):
+            sector_data[driver_name] = {
+                "times": times,
+                "color": driver_colors.get(drv_num, GR)
+            }
+    
+    if not sector_data:
+        fig = go.Figure()
+        fig.update_layout(**LAYOUT,
+            title="◈ PERFORMANCE RADAR — Nessun dato settoriale completo disponibile",
+            height=500,
+        )
+        return fig
+    
+    # Calcola il miglior tempo per ogni settore (minimo)
+    min_times = []
+    for i in range(3):  # S1, S2, S3
+        sector_times = [data["times"][i] for data in sector_data.values()]
+        min_times.append(min(sector_times))
+    
+    # Crea figura radar
+    fig = go.Figure()
+    
+    categories = ["Sector 1", "Sector 2", "Sector 3"]
+    
+    for driver_name, data in sector_data.items():
+        times = data["times"]
+        # Calcola delta rispetto al miglior tempo (percentuale più lento)
+        # Usiamo delta in secondi per chiarezza
+        delta_times = [t - min_times[i] for i, t in enumerate(times)]
+        
+        # Per radar chart, vogliamo valori più bassi = meglio, quindi invertiamo
+        # Usiamo un punteggio normalizzato: 100 - (delta * scaling factor)
+        # Scaling factor: 10 secondi di delta = 100 punti
+        max_delta = max(delta_times) if delta_times else 10
+        scaling = 100 / max(10, max_delta * 2)  # Scaling ragionevole
+        
+        scores = [100 - (delta * scaling) for delta in delta_times]
+        
+        fig.add_trace(go.Scatterpolar(
+            r=scores + [scores[0]],  # Chiudi il poligono
+            theta=categories + [categories[0]],
+            name=driver_name,
+            marker_color=data["color"],
+            customdata=[delta_times + delta_times[:1]],  # Ripeti primo valore per chiudere
+            hovertemplate=f"<b>{driver_name}</b><br>Sector: %{{theta}}<br>Score: %{{r:.1f}} pts<br>Delta S1: {delta_times[0]:.3f}s<br>Delta S2: {delta_times[1]:.3f}s<br>Delta S3: {delta_times[2]:.3f}s<extra></extra>",
+            fill='toself',
+            opacity=0.7,
+        ))
+    
+    # Crea copia di LAYOUT senza legend per evitare conflitto
+    layout_copy = dict(LAYOUT)
+    if 'legend' in layout_copy:
+        del layout_copy['legend']
+    
+    fig.update_layout(**layout_copy,
+        title="◈ PERFORMANCE RADAR — Profili prestazionali relativi (vs miglior tempo)",
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                gridcolor="rgba(85,85,117,0.27)",
+                tickfont_color=W,
+            ),
+            angularaxis=dict(
+                gridcolor="rgba(85,85,117,0.27)",
+                linecolor=GR,
+                rotation=90,  # Inizia dal top
+                direction="clockwise",
+            ),
+            bgcolor=CARD,
+        ),
+        height=600,
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.02,
+            bgcolor="rgba(15,15,28,0.8)",
+            bordercolor=GR,
+        ),
+    )
+    
+    return fig
+
+
+def sector_correlation_matrix(sector_stats: Dict[int, Dict], driver_info: List[dict]) -> go.Figure:
+    """
+    Matrice di correlazione tra settori e tempo totale.
+    """
+    # Mappa driver_number -> nome
+    driver_names = {}
+    for drv in driver_info:
+        num = drv["driver_number"]
+        driver_names[num] = drv.get("full_name", drv.get("name_acronym", str(num)))
+    
+    # Raccoglie dati per ogni pilota: S1, S2, S3, Totale (stima)
+    data = []
+    drivers = []
+    
+    for drv_num, stats in sector_stats.items():
+        sector_stats_data = stats.get("sector_stats", {})
+        
+        s1 = sector_stats_data.get("sector1", {}).get("mean")
+        s2 = sector_stats_data.get("sector2", {}).get("mean")
+        s3 = sector_stats_data.get("sector3", {}).get("mean")
+        
+        if s1 is not None and s2 is not None and s3 is not None:
+            total = s1 + s2 + s3  # Stima del tempo totale
+            data.append([s1, s2, s3, total])
+            drivers.append(driver_names.get(drv_num, str(drv_num)))
+    
+    if len(data) < 3:
+        fig = go.Figure()
+        fig.update_layout(**LAYOUT,
+            title="◈ CORRELATION MATRIX — Dati insufficienti",
+            height=500,
+        )
+        return fig
+    
+    # Calcola matrice di correlazione
+    import pandas as pd
+    import numpy as np
+    
+    df = pd.DataFrame(data, columns=["S1", "S2", "S3", "Totale"])
+    corr_matrix = df.corr()
+    
+    # Crea heatmap della correlazione
+    fig = go.Figure(data=go.Heatmap(
+        z=corr_matrix.values,
+        x=corr_matrix.columns,
+        y=corr_matrix.columns,
+        colorscale='RdBu',
+        zmid=0,
+        hoverongaps=False,
+        text=np.round(corr_matrix.values, 3),
+        texttemplate="%{text}",
+        textfont={"size": 12, "color": "black"},
+        colorbar=dict(title=dict(text="Correlazione", side="right")),
+    ))
+    
+    fig.update_layout(**LAYOUT,
+        title="◈ CORRELATION MATRIX — Relazioni tra settori e tempo totale",
+        xaxis_title="Variabile",
+        yaxis_title="Variabile",
+        height=500,
+        xaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+        yaxis=dict(gridcolor="rgba(85,85,117,0.27)"),
+    )
+    
+    return fig
+
+
+def sector_evolution_analysis(valid_laps: List[dict], sector_stats: Dict[int, Dict], driver_info: List[dict]) -> go.Figure:
+    """
+    Analisi evoluzione delle prestazioni durante la sessione.
+    Mostra tempi dei settori vs numero giro.
+    """
+    # Mappa driver_number -> nome e colore
+    driver_names = {}
+    driver_colors = {}
+    for drv in driver_info:
+        num = drv["driver_number"]
+        driver_names[num] = drv.get("full_name", drv.get("name_acronym", str(num)))
+        driver_colors[num] = _normalize_color(drv.get("team_colour", GR))
+    
+    # Filtra solo piloti presenti nei sector_stats
+    included_drivers = set(sector_stats.keys())
+    
+    # Raccoglie dati per ogni pilota: {driver_num: {lap_number: [s1, s2, s3]}}
+    driver_lap_data = {}
+    
+    for lap in valid_laps:
+        drv_num = lap["driver_number"]
+        if drv_num not in included_drivers:
+            continue
+        
+        lap_num = lap.get("lap_number")
+        s1 = lap.get("duration_sector_1")
+        s2 = lap.get("duration_sector_2")
+        s3 = lap.get("duration_sector_3")
+        
+        if lap_num is not None and s1 is not None and s2 is not None and s3 is not None:
+            if drv_num not in driver_lap_data:
+                driver_lap_data[drv_num] = {}
+            
+            driver_lap_data[drv_num][lap_num] = [s1, s2, s3]
+    
+    if not driver_lap_data:
+        fig = go.Figure()
+        fig.update_layout(**LAYOUT,
+            title="◈ SESSION EVOLUTION — Nessun dato lap‑by‑lap disponibile",
+            height=500,
+        )
+        return fig
+    
+    # Crea subplot: 1 riga per settore
+    fig = make_subplots(
+        rows=1, cols=3,
+        subplot_titles=("Sector 1", "Sector 2", "Sector 3"),
+        horizontal_spacing=0.1,
+        shared_yaxes=True,
+    )
+    
+    # Limita a massimo 5 piloti per leggibilità
+    max_drivers = 5
+    drivers_to_plot = list(driver_lap_data.keys())[:max_drivers]
+    
+    for col, s_idx in enumerate([0, 1, 2], 1):
+        for drv_num in drivers_to_plot:
+            lap_data = driver_lap_data[drv_num]
+            if not lap_data:
+                continue
+            
+            # Ordina per numero giro
+            sorted_laps = sorted(lap_data.items(), key=lambda x: x[0])
+            lap_numbers = [lap[0] for lap in sorted_laps]
+            sector_times = [lap[1][s_idx] for lap in sorted_laps]
+            
+            driver_name = driver_names.get(drv_num, str(drv_num))
+            color = driver_colors.get(drv_num, GR)
+            
+            fig.add_trace(
+                go.Scatter(
+                    x=lap_numbers,
+                    y=sector_times,
+                    mode='lines+markers',
+                    name=driver_name if col == 1 else None,  # Mostra legenda solo per primo settore
+                    line=dict(color=color, width=2),
+                    marker=dict(size=6, color=color),
+                    hovertemplate=f"<b>{driver_name}</b><br>Giro %{{x}}<br>Tempo: %{{y:.3f}}s<extra></extra>",
+                    showlegend=(col == 1),
+                ),
+                row=1, col=col
+            )
+    
+    # Crea copia di LAYOUT senza legend per evitare conflitto
+    layout_copy = dict(LAYOUT)
+    if 'legend' in layout_copy:
+        del layout_copy['legend']
+    
+    fig.update_layout(**layout_copy,
+        title="◈ SESSION EVOLUTION — Evoluzione tempi settoriali durante la sessione",
+        height=500,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.02,
+            bgcolor="rgba(15,15,28,0.8)",
+            bordercolor=GR,
+        ),
+    )
+    
+    fig.update_xaxes(title_text="Numero giro", gridcolor="rgba(85,85,117,0.27)")
+    fig.update_yaxes(title_text="Tempo settore (s)", gridcolor="rgba(85,85,117,0.27)")
+    
     return fig

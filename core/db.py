@@ -24,6 +24,9 @@ from typing import Optional
 # ── Costanti ──────────────────────────────────────────────────────────
 DEFAULT_DB_NAME = "betbreaker"
 _COLLECTION_PREFIX = "predictions_"
+_LAPTIMES_PREFIX = "lap_times_"
+_DRIVERINFO_PREFIX = "driver_info_"
+_SESSIONSTATS_PREFIX = "session_stats_"
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -126,6 +129,127 @@ def _ensure_index(coll):
             name="unique_prediction",
             background=True,
         )
+
+
+def lap_times_collection(db, year: int):
+    """
+    Ritorna la collezione lap_times per l'anno dato.
+    Indici: {year, round_num, session_key, driver_number} per query veloci.
+    """
+    coll_name = f"{_LAPTIMES_PREFIX}{year}"
+    coll = db[coll_name]
+    _ensure_lap_times_index(coll)
+    return coll
+
+
+def driver_info_collection(db, year: int):
+    """
+    Ritorna la collezione driver_info per l'anno dato.
+    Indici: {year, round_num, session_key, driver_number} per join con lap_times.
+    """
+    coll_name = f"{_DRIVERINFO_PREFIX}{year}"
+    coll = db[coll_name]
+    _ensure_driver_info_index(coll)
+    return coll
+
+
+def session_stats_collection(db, year: int):
+    """
+    Ritorna la collezione session_stats per l'anno dato.
+    Indici: {year, round_num, session_name, driver} per statistiche rapide.
+    """
+    coll_name = f"{_SESSIONSTATS_PREFIX}{year}"
+    coll = db[coll_name]
+    _ensure_session_stats_index(coll)
+    return coll
+
+
+def _ensure_lap_times_index(coll):
+    """Crea indici per query efficienti sui lap times."""
+    from pymongo import ASCENDING
+    existing = {idx["name"] for idx in coll.list_indexes()}
+    
+    # Indice univoco per evitare duplicati (session_key + driver_number + lap_number)
+    if "lap_times_unique" not in existing:
+        coll.create_index(
+            [
+                ("session_key", ASCENDING),
+                ("driver_number", ASCENDING),
+                ("lap_number", ASCENDING)
+            ],
+            unique=True,
+            name="lap_times_unique",
+            background=True
+        )
+    
+    # Indice composto per query più comuni: anno + round + sessione + pilota
+    if "lap_times_main" not in existing:
+        coll.create_index(
+            [
+                ("year", ASCENDING),
+                ("round_num", ASCENDING), 
+                ("session_key", ASCENDING),
+                ("driver_number", ASCENDING),
+                ("lap_number", ASCENDING)
+            ],
+            name="lap_times_main",
+            background=True
+        )
+    
+    # Indice per ricerca per session_key (usato spesso)
+    if "session_key_idx" not in existing:
+        coll.create_index([("session_key", ASCENDING)], name="session_key_idx", background=True)
+    
+    # Indice per driver_number (analisi per pilota)
+    if "driver_number_idx" not in existing:
+        coll.create_index([("driver_number", ASCENDING)], name="driver_number_idx", background=True)
+
+
+def _ensure_driver_info_index(coll):
+    """Crea indici per info pilota."""
+    from pymongo import ASCENDING
+    existing = {idx["name"] for idx in coll.list_indexes()}
+    
+    # Indice univoco: anno + round + sessione + pilota (un record per pilota per sessione)
+    if "driver_info_unique" not in existing:
+        coll.create_index(
+            [
+                ("year", ASCENDING),
+                ("round_num", ASCENDING),
+                ("session_key", ASCENDING),
+                ("driver_number", ASCENDING)
+            ],
+            unique=True,
+            name="driver_info_unique",
+            background=True
+        )
+    
+    # Indice per team_name (aggregazioni per scuderia)
+    if "team_name_idx" not in existing:
+        coll.create_index([("team_name", ASCENDING)], name="team_name_idx", background=True)
+
+
+def _ensure_session_stats_index(coll):
+    """Crea indici per statistiche di sessione."""
+    from pymongo import ASCENDING
+    existing = {idx["name"] for idx in coll.list_indexes()}
+    
+    # Indice per query più comuni: anno + round + sessione + pilota
+    if "session_stats_main" not in existing:
+        coll.create_index(
+            [
+                ("year", ASCENDING),
+                ("round_num", ASCENDING),
+                ("session_name", ASCENDING),
+                ("driver", ASCENDING)
+            ],
+            name="session_stats_main",
+            background=True
+        )
+    
+    # Indice per session_name (filter rapido)
+    if "session_name_idx" not in existing:
+        coll.create_index([("session_name", ASCENDING)], name="session_name_idx", background=True)
 
 
 def list_prediction_collections(db) -> list[str]:
